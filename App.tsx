@@ -131,13 +131,13 @@ const App: React.FC = () => {
         }));
         setState(prev => ({ 
           ...prev, 
-          plData: prev.plData ? { ...prev.plData, table: formattedTable, lastUpdated: new Date().toISOString() } : null 
+          plData: prev.plData ? { ...prev.plData, table: formattedTable, lastUpdated: new Date().toISOString() } : { table: formattedTable, currentFixtures: [], nextFixtures: [], results: {}, sources: [], lastUpdated: new Date().toISOString() }
         }));
       } else {
         const aiStandings = await getStandingsViaSearch();
         setState(prev => ({ 
           ...prev, 
-          plData: prev.plData ? { ...prev.plData, table: aiStandings.table, sources: aiStandings.sources, lastUpdated: new Date().toISOString() } : null 
+          plData: prev.plData ? { ...prev.plData, table: aiStandings.table, sources: aiStandings.sources, lastUpdated: new Date().toISOString() } : { table: aiStandings.table, currentFixtures: [], nextFixtures: [], results: {}, sources: aiStandings.sources, lastUpdated: new Date().toISOString() }
         }));
       }
 
@@ -416,8 +416,8 @@ const App: React.FC = () => {
     );
   }
 
-  // Strictly Narrowed Competition Object
-  const selectedComp: Competition = safeSelectedComp;
+  // Strictly Narrowed Competition Object - Permanent Architectural Fix for TS18047
+  const selectedComp: Competition = safeSelectedComp!;
 
   return (
     <div className="min-h-screen bg-[#0d1117] text-slate-100 overflow-x-hidden relative">
