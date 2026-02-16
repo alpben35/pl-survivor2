@@ -214,10 +214,11 @@ const App: React.FC = () => {
   }, [state.plData?.table]);
 
   const shareReport = () => {
-    if (!safeSelectedComp) return;
-    const week = safeSelectedComp.currentWeek;
+    const selectedComp = safeSelectedComp;
+    if (!selectedComp) return;
+    const week = selectedComp.currentWeek;
     const survivors = allCouponsInComp.filter(c => c.status === 'ACTIVE');
-    let text = `🏆 *PL SURVIVOR ELITE* 🏆\n*Pool:* ${safeSelectedComp.name}\n*MW ${week} Report*\n--------------------------\n`;
+    let text = `🏆 *PL SURVIVOR ELITE* 🏆\n*Pool:* ${selectedComp.name}\n*MW ${week} Report*\n--------------------------\n`;
     text += `🛡️ *Survivors:* ${survivors.length}\n`;
     survivors.forEach(c => {
       const pick = c.picks.find(p => p.week === week);
@@ -230,7 +231,8 @@ const App: React.FC = () => {
 
   const handlePickRequest = (teamId: string, week: number) => {
     const team = PREMIER_LEAGUE_TEAMS.find(t => t.id === teamId);
-    if (!team || !safeActiveCoupon || safeActiveCoupon.status !== 'ACTIVE' || !safeSelectedComp) return;
+    const selectedComp = safeSelectedComp;
+    if (!team || !safeActiveCoupon || safeActiveCoupon.status !== 'ACTIVE' || !selectedComp) return;
     
     const match = matches.find(m => m.matchday === week && (m.homeTeam.name === team.name || m.awayTeam.name === team.name || team.aliases?.some(a => m.homeTeam.name === a || m.awayTeam.name === a)));
     if (match && isMatchLocked(match.utcDate)) return alert("Match is locked!");
@@ -247,7 +249,8 @@ const App: React.FC = () => {
   };
 
   const addEntry = () => {
-    if (!state.selectedCompetitionId || !safeSelectedComp) return;
+    const selectedComp = safeSelectedComp;
+    if (!state.selectedCompetitionId || !selectedComp) return;
     if (myCouponsInComp.length >= MAX_ENTRIES_PER_POOL) return alert(`Max ${MAX_ENTRIES_PER_POOL} entries allowed.`);
     if (state.userCoins < ENTRY_COST) return alert("Insufficient coins!");
     
@@ -258,7 +261,7 @@ const App: React.FC = () => {
       ownerNickname: state.userNickname || "Manager", 
       status: 'ACTIVE', 
       picks: [],
-      createdAtWeek: safeSelectedComp.currentWeek
+      createdAtWeek: selectedComp.currentWeek
     };
     setState(prev => ({ 
       ...prev, 
@@ -269,8 +272,9 @@ const App: React.FC = () => {
   };
 
   const resolveWeek = () => {
-    if (!safeSelectedComp || !state.plData) return;
-    const currentWeek = safeSelectedComp.currentWeek;
+    const selectedComp = safeSelectedComp;
+    if (!selectedComp || !state.plData) return;
+    const currentWeek = selectedComp.currentWeek;
     const outcomes = state.plData.results;
     
     setState(prev => ({
@@ -412,7 +416,8 @@ const App: React.FC = () => {
     );
   }
 
-  const currentMatchweekLabel = safeSelectedComp.currentWeek;
+  // Strictly Narrowed Competition Object
+  const selectedComp: Competition = safeSelectedComp;
 
   return (
     <div className="min-h-screen bg-[#0d1117] text-slate-100 overflow-x-hidden relative">
@@ -421,8 +426,8 @@ const App: React.FC = () => {
           <div className="flex items-center gap-4">
             <button onClick={() => setState(s => ({ ...s, selectedCompetitionId: null }))} className="p-3 bg-[#0d1117] text-slate-400 rounded-xl hover:text-white transition"><i className="fa-solid fa-arrow-left"></i></button>
             <div>
-              <h1 className="text-2xl font-black text-white uppercase italic tracking-tighter leading-none">{safeSelectedComp?.name}</h1>
-              <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest mt-1">Pool Hub • Week {currentMatchweekLabel}</p>
+              <h1 className="text-2xl font-black text-white uppercase italic tracking-tighter leading-none">{selectedComp.name}</h1>
+              <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest mt-1">Pool Hub • Week {selectedComp.currentWeek}</p>
             </div>
           </div>
           <div className="flex items-center gap-4">
@@ -451,7 +456,7 @@ const App: React.FC = () => {
                     <div className="space-y-8">
                       {selectionBreakdown.length > 0 && (
                         <div className="bg-indigo-600/10 border border-indigo-500/20 rounded-2xl p-6 mb-8 animate-fade-in">
-                           <h3 className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-4">Weekly Selection Summary (Week {currentMatchweekLabel})</h3>
+                           <h3 className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-4">Weekly Selection Summary (Week {selectedComp.currentWeek})</h3>
                            <div className="flex flex-wrap gap-4">
                               {selectionBreakdown.map(item => (
                                 <div key={item.team?.id} className="flex items-center gap-3 bg-black/40 px-4 py-2 rounded-xl border border-white/5 shadow-inner">
@@ -478,7 +483,11 @@ const App: React.FC = () => {
                             const awayTeam = PREMIER_LEAGUE_TEAMS.find(t => t.name === match.awayTeam.name || t.aliases?.includes(match.awayTeam.name));
                             return (
                               <div key={match.id} className="bg-black/20 border border-white/5 rounded-3xl p-6 flex justify-between items-center group hover:border-white/20 transition-all shadow-lg">
-                                 <button onClick={() => homeTeam && selectedMatchweek !== null && handlePickRequest(homeTeam.id, selectedMatchweek)} className="flex-1 flex flex-col items-center gap-2 hover:scale-105 transition-all">
+                                 <button onClick={() => {
+                                   if (homeTeam && selectedMatchweek !== null) {
+                                     handlePickRequest(homeTeam.id, selectedMatchweek);
+                                   }
+                                 }} className="flex-1 flex flex-col items-center gap-2 hover:scale-105 transition-all">
                                     <img src={homeTeam?.logo} className="w-12 h-12 object-contain" alt={homeTeam?.name} />
                                     <span className="text-[11px] font-black text-white uppercase text-center">{match.homeTeam.name}</span>
                                  </button>
@@ -486,7 +495,11 @@ const App: React.FC = () => {
                                     <span className="text-[24px] font-black text-white italic tracking-tighter">{match.score?.fullTime?.home ?? '-'} : {match.score?.fullTime?.away ?? '-'}</span>
                                     <span className="text-[8px] font-bold text-slate-500 uppercase mt-2">{new Date(match.utcDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                                  </div>
-                                 <button onClick={() => awayTeam && selectedMatchweek !== null && handlePickRequest(awayTeam.id, selectedMatchweek)} className="flex-1 flex flex-col items-center gap-2 hover:scale-105 transition-all">
+                                 <button onClick={() => {
+                                   if (awayTeam && selectedMatchweek !== null) {
+                                     handlePickRequest(awayTeam.id, selectedMatchweek);
+                                   }
+                                 }} className="flex-1 flex flex-col items-center gap-2 hover:scale-105 transition-all">
                                     <img src={awayTeam?.logo} className="w-12 h-12 object-contain" alt={awayTeam?.name} />
                                     <span className="text-[11px] font-black text-white uppercase text-center">{match.awayTeam.name}</span>
                                  </button>
@@ -556,7 +569,8 @@ const App: React.FC = () => {
                     <h2 className="text-xl font-black text-white uppercase italic mb-6">MW {selectedMatchweek} Pick Selection</h2>
                     <div className="grid grid-cols-4 gap-3">
                       {PREMIER_LEAGUE_TEAMS.map(team => {
-                        const used = selectedMatchweek !== null && safeActiveCoupon.picks.some(p => p.teamId === team.id && p.week !== selectedMatchweek);
+                        const activeCoupon = safeActiveCoupon;
+                        const used = selectedMatchweek !== null && activeCoupon.picks.some(p => p.teamId === team.id && p.week !== selectedMatchweek);
                         const isSelected = !!currentPickInView && currentPickInView.teamId === team.id;
                         return (
                           <button key={team.id} disabled={!!used} onClick={() => {
@@ -645,7 +659,7 @@ const App: React.FC = () => {
             <div className="bg-[#161b22] border border-[#30363d] w-full max-w-2xl rounded-[3rem] p-12 text-center shadow-2xl">
               <h2 className="text-4xl font-black text-white uppercase italic tracking-tighter mb-8">Admin Control Engine</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                 <button onClick={() => { setShowAdminHub(false); setShowResolveModal(true); }} className="py-12 bg-indigo-600 text-white font-black rounded-3xl uppercase tracking-widest hover:bg-indigo-500 transition shadow-2xl shadow-indigo-600/30">Resolve Week {currentMatchweekLabel}</button>
+                 <button onClick={() => { setShowAdminHub(false); setShowResolveModal(true); }} className="py-12 bg-indigo-600 text-white font-black rounded-3xl uppercase tracking-widest hover:bg-indigo-500 transition shadow-2xl shadow-indigo-600/30">Resolve Week {selectedComp.currentWeek}</button>
                  <button onClick={() => window.location.reload()} className="py-12 bg-slate-800 text-white font-black rounded-3xl uppercase tracking-widest hover:bg-slate-700 transition shadow-inner">Sync Engine</button>
               </div>
               <button onClick={() => setShowAdminHub(false)} className="mt-10 text-slate-500 font-bold uppercase text-[11px] tracking-widest hover:text-white transition-colors">Shutdown Hub</button>
@@ -656,10 +670,11 @@ const App: React.FC = () => {
         {showResolveModal && (
           <div className="fixed inset-0 bg-black/98 z-[250] flex items-center justify-center p-6 overflow-y-auto animate-fade-in backdrop-blur-lg">
             <div className="bg-[#161b22] border border-[#30363d] w-full max-w-2xl rounded-[3rem] p-12 shadow-2xl">
-              <h2 className="text-4xl font-black text-white uppercase italic mb-8 tracking-tighter">MW {currentMatchweekLabel} Final Scorecards</h2>
+              <h2 className="text-4xl font-black text-white uppercase italic mb-8 tracking-tighter">MW {selectedComp.currentWeek} Final Scorecards</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-10 max-h-[400px] overflow-y-auto no-scrollbar pr-2">
                 {PREMIER_LEAGUE_TEAMS.sort((a,b) => a.name.localeCompare(b.name)).map(team => {
-                  const currentStatus = state.plData?.results?.[team.name] || 'PENDING';
+                  const plData = state.plData;
+                  const currentStatus = plData?.results?.[team.name] || 'PENDING';
                   return (
                     <div key={team.id} className="bg-black/40 p-4 rounded-2xl border border-white/5 flex items-center justify-between shadow-inner">
                       <span className="text-[11px] font-black text-white uppercase truncate max-w-[120px] tracking-tight">{team.name}</span>
