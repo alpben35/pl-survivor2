@@ -70,14 +70,18 @@ const App: React.FC = () => {
   const [searchFormResult, setSearchFormResult] = useState<{ form: TeamForm[], sources: { title: string, uri: string }[] }>({ form: [], sources: [] });
   const [selectedMatchweek, setSelectedMatchweek] = useState<number | null>(null);
 
-  const selectedComp = useMemo(() => state.competitions.find(c => c.id === state.selectedCompetitionId) || null, [state.competitions, state.selectedCompetitionId]);
+  // Use a strictly narrowed competition object or null
+  const safeSelectedComp: Competition | null = useMemo(() => 
+    state.competitions.find(c => c.id === state.selectedCompetitionId) || null, 
+  [state.competitions, state.selectedCompetitionId]);
+
   const allCouponsInComp = useMemo(() => state.coupons.filter(c => c.competitionId === state.selectedCompetitionId), [state.coupons, state.selectedCompetitionId]);
   const myCouponsInComp = useMemo(() => allCouponsInComp.filter(c => c.ownerNickname === state.userNickname), [allCouponsInComp, state.userNickname]);
 
   // Breakdown of picks for the current competition week
   const selectionBreakdown = useMemo(() => {
-    if (!selectedComp) return [];
-    const week = selectedComp.currentWeek;
+    if (!safeSelectedComp) return [];
+    const week = safeSelectedComp.currentWeek;
     const counts: Record<string, number> = {};
     allCouponsInComp.forEach(c => {
       if (c.status === 'ACTIVE') {
@@ -93,16 +97,16 @@ const App: React.FC = () => {
         count
       }))
       .sort((a, b) => b.count - a.count);
-  }, [selectedComp, allCouponsInComp]);
+  }, [safeSelectedComp, allCouponsInComp]);
 
   const standingsWeeks = useMemo(() => {
-    if (!selectedComp) return [];
-    let maxWeek = selectedComp.currentWeek;
+    if (!safeSelectedComp) return [];
+    let maxWeek = safeSelectedComp.currentWeek;
     allCouponsInComp.forEach(c => {
       c.picks.forEach(p => { if (p.week > maxWeek) maxWeek = p.week; });
     });
-    return Array.from({ length: Math.max(selectedComp.currentWeek, maxWeek) }, (_, i) => i + 1);
-  }, [selectedComp, allCouponsInComp]);
+    return Array.from({ length: Math.max(safeSelectedComp.currentWeek, maxWeek) }, (_, i) => i + 1);
+  }, [safeSelectedComp, allCouponsInComp]);
 
   useEffect(() => {
     async function loadData() {
@@ -188,12 +192,12 @@ const App: React.FC = () => {
     return Object.keys(groupedMatches).map(Number).sort((a, b) => a - b);
   }, [groupedMatches]);
 
-  const activeCoupon = useMemo(() => state.coupons.find(c => c.id === activeCouponId) || null, [state.coupons, activeCouponId]);
+  const safeActiveCoupon: Coupon | null = useMemo(() => state.coupons.find(c => c.id === activeCouponId) || null, [state.coupons, activeCouponId]);
   
   const currentPickInView = useMemo(() => {
-    if (!activeCoupon || !selectedMatchweek) return null;
-    return activeCoupon.picks.find(p => p.week === selectedMatchweek) || null;
-  }, [activeCoupon, selectedMatchweek]);
+    if (!safeActiveCoupon || !selectedMatchweek) return null;
+    return safeActiveCoupon.picks.find(p => p.week === selectedMatchweek) || null;
+  }, [safeActiveCoupon, selectedMatchweek]);
 
   const sortedTable = useMemo(() => {
     if (!state.plData?.table) return [];
@@ -201,10 +205,10 @@ const App: React.FC = () => {
   }, [state.plData?.table]);
 
   const shareReport = () => {
-    if (!selectedComp) return;
-    const week = selectedComp.currentWeek;
+    if (!safeSelectedComp) return;
+    const week = safeSelectedComp.currentWeek;
     const survivors = allCouponsInComp.filter(c => c.status === 'ACTIVE');
-    let text = `🏆 *PL SURVIVOR ELITE* 🏆\n*Pool:* ${selectedComp?.name}\n*MW ${week} Report*\n--------------------------\n`;
+    let text = `🏆 *PL SURVIVOR ELITE* 🏆\n*Pool:* ${safeSelectedComp?.name}\n*MW ${week} Report*\n--------------------------\n`;
     text += `🛡️ *Survivors:* ${survivors.length}\n`;
     survivors.forEach(c => {
       const pick = c.picks.find(p => p.week === week);
@@ -217,12 +221,12 @@ const App: React.FC = () => {
 
   const handlePickRequest = (teamId: string, week: number) => {
     const team = PREMIER_LEAGUE_TEAMS.find(t => t.id === teamId);
-    if (!team || !activeCoupon || activeCoupon.status !== 'ACTIVE' || !selectedComp) return;
+    if (!team || !safeActiveCoupon || safeActiveCoupon.status !== 'ACTIVE' || !safeSelectedComp) return;
     
     const match = matches.find(m => m.matchday === week && (m.homeTeam.name === team.name || m.awayTeam.name === team.name || team.aliases?.some(a => m.homeTeam.name === a || m.awayTeam.name === a)));
     if (match && isMatchLocked(match.utcDate)) return alert("Match is locked!");
 
-    const usedInThisCouponForOtherWeek = activeCoupon.picks.some(p => p.teamId === teamId && p.week !== week);
+    const usedInThisCouponForOtherWeek = safeActiveCoupon.picks.some(p => p.teamId === teamId && p.week !== week);
     if (usedInThisCouponForOtherWeek) return alert("You already used this team!");
 
     const usedByManagerInPast = myCouponsInComp.some(c => 
@@ -234,7 +238,7 @@ const App: React.FC = () => {
   };
 
   const addEntry = () => {
-    if (!state.selectedCompetitionId || !selectedComp) return;
+    if (!state.selectedCompetitionId || !safeSelectedComp) return;
     if (myCouponsInComp.length >= MAX_ENTRIES_PER_POOL) return alert(`Max ${MAX_ENTRIES_PER_POOL} entries allowed.`);
     if (state.userCoins < ENTRY_COST) return alert("Insufficient coins!");
     
@@ -245,7 +249,7 @@ const App: React.FC = () => {
       ownerNickname: state.userNickname!, 
       status: 'ACTIVE', 
       picks: [],
-      createdAtWeek: selectedComp?.currentWeek || 1
+      createdAtWeek: safeSelectedComp?.currentWeek || 1
     };
     setState(prev => ({ 
       ...prev, 
@@ -256,13 +260,13 @@ const App: React.FC = () => {
   };
 
   const resolveWeek = () => {
-    if (!selectedComp || !state.plData) return;
+    if (!safeSelectedComp || !state.plData) return;
     const outcomes = state.plData.results;
     setState(prev => ({
       ...prev,
       coupons: prev.coupons.map(coupon => {
         if (coupon.competitionId !== prev.selectedCompetitionId || coupon.status !== 'ACTIVE') return coupon;
-        const pick = coupon.picks.find(p => p.week === selectedComp?.currentWeek);
+        const pick = coupon.picks.find(p => p.week === safeSelectedComp?.currentWeek);
         const team = pick ? PREMIER_LEAGUE_TEAMS.find(t => t.id === pick.teamId) : null;
         if (!team || outcomes[team.name] !== 'WIN') return { ...coupon, status: 'ELIMINATED' as const };
         return coupon;
@@ -388,10 +392,19 @@ const App: React.FC = () => {
     );
   }
 
-  // Final narrowing for selectedComp after verifying state.selectedCompetitionId exists
-  if (!selectedComp) {
-    return null;
+  // Final narrowing for safeSelectedComp after verifying state.selectedCompetitionId exists
+  if (!safeSelectedComp) {
+    return (
+      <div className="min-h-screen bg-[#0d1117] text-slate-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin mb-4 mx-auto"></div>
+          <p className="text-xs font-black uppercase tracking-widest text-slate-500">Synchronizing Pool Data...</p>
+        </div>
+      </div>
+    );
   }
+
+  const currentMatchweekLabel = safeSelectedComp?.currentWeek || 1;
 
   // --- MAIN GAME VIEW ---
   return (
@@ -401,8 +414,8 @@ const App: React.FC = () => {
           <div className="flex items-center gap-4">
             <button onClick={() => setState(s => ({ ...s, selectedCompetitionId: null }))} className="p-3 bg-[#0d1117] text-slate-400 rounded-xl hover:text-white transition"><i className="fa-solid fa-arrow-left"></i></button>
             <div>
-              <h1 className="text-2xl font-black text-white uppercase italic tracking-tighter leading-none">{selectedComp?.name}</h1>
-              <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest mt-1">Pool Hub • Week {selectedComp?.currentWeek}</p>
+              <h1 className="text-2xl font-black text-white uppercase italic tracking-tighter leading-none">{safeSelectedComp?.name}</h1>
+              <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest mt-1">Pool Hub • Week {currentMatchweekLabel}</p>
             </div>
           </div>
           <div className="flex items-center gap-4">
@@ -432,7 +445,7 @@ const App: React.FC = () => {
                       {/* Weekly Selection Summary Widget */}
                       {selectionBreakdown.length > 0 && (
                         <div className="bg-indigo-600/10 border border-indigo-500/20 rounded-2xl p-6 mb-8 animate-fade-in">
-                           <h3 className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-4">Weekly Selection Summary (Week {selectedComp?.currentWeek})</h3>
+                           <h3 className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-4">Weekly Selection Summary (Week {currentMatchweekLabel})</h3>
                            <div className="flex flex-wrap gap-4">
                               {selectionBreakdown.map(item => (
                                 <div key={item.team?.id} className="flex items-center gap-3 bg-black/40 px-4 py-2 rounded-xl border border-white/5 shadow-inner">
@@ -532,12 +545,12 @@ const App: React.FC = () => {
                   </div>
                 </div>
 
-                {activeCoupon && (
+                {safeActiveCoupon && (
                   <div className="bg-[#161b22]/40 backdrop-blur-xl border border-white/5 rounded-3xl p-8 shadow-2xl animate-fade-in">
                     <h2 className="text-xl font-black text-white uppercase italic mb-6">MW {selectedMatchweek} Pick Selection</h2>
                     <div className="grid grid-cols-4 gap-3">
                       {PREMIER_LEAGUE_TEAMS.map(team => {
-                        const used = activeCoupon?.picks.some(p => p.teamId === team.id && p.week !== selectedMatchweek);
+                        const used = safeActiveCoupon?.picks.some(p => p.teamId === team.id && p.week !== selectedMatchweek);
                         const isSelected = !!currentPickInView && currentPickInView.teamId === team.id;
                         return (
                           <button key={team.id} disabled={used} onClick={() => handlePickRequest(team.id, selectedMatchweek!)} 
@@ -620,7 +633,7 @@ const App: React.FC = () => {
             <div className="bg-[#161b22] border border-[#30363d] w-full max-w-2xl rounded-[3rem] p-12 text-center shadow-2xl">
               <h2 className="text-4xl font-black text-white uppercase italic tracking-tighter mb-8">Admin Control Engine</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                 <button onClick={() => { setShowAdminHub(false); setShowResolveModal(true); }} className="py-12 bg-indigo-600 text-white font-black rounded-3xl uppercase tracking-widest hover:bg-indigo-500 transition shadow-2xl shadow-indigo-600/30">Resolve Week {selectedComp?.currentWeek}</button>
+                 <button onClick={() => { setShowAdminHub(false); setShowResolveModal(true); }} className="py-12 bg-indigo-600 text-white font-black rounded-3xl uppercase tracking-widest hover:bg-indigo-500 transition shadow-2xl shadow-indigo-600/30">Resolve Week {safeSelectedComp?.currentWeek}</button>
                  <button onClick={() => window.location.reload()} className="py-12 bg-slate-800 text-white font-black rounded-3xl uppercase tracking-widest hover:bg-slate-700 transition shadow-inner">Sync Engine</button>
               </div>
               <button onClick={() => setShowAdminHub(false)} className="mt-10 text-slate-500 font-bold uppercase text-[11px] tracking-widest hover:text-white transition-colors">Shutdown Hub</button>
@@ -632,7 +645,7 @@ const App: React.FC = () => {
         {showResolveModal && (
           <div className="fixed inset-0 bg-black/98 z-[250] flex items-center justify-center p-6 overflow-y-auto animate-fade-in backdrop-blur-lg">
             <div className="bg-[#161b22] border border-[#30363d] w-full max-w-2xl rounded-[3rem] p-12 shadow-2xl">
-              <h2 className="text-4xl font-black text-white uppercase italic mb-8 tracking-tighter">MW {selectedComp?.currentWeek} Final Scorecards</h2>
+              <h2 className="text-4xl font-black text-white uppercase italic mb-8 tracking-tighter">MW {safeSelectedComp?.currentWeek} Final Scorecards</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-10 max-h-[400px] overflow-y-auto no-scrollbar pr-2">
                 {PREMIER_LEAGUE_TEAMS.sort((a,b) => a.name.localeCompare(b.name)).map(team => {
                   const currentStatus = state.plData?.results?.[team.name] || 'PENDING';
