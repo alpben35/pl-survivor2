@@ -427,7 +427,7 @@ const App: React.FC = () => {
                       {/* Weekly Selection Summary Widget */}
                       {selectionBreakdown.length > 0 && (
                         <div className="bg-indigo-600/10 border border-indigo-500/20 rounded-2xl p-6 mb-8 animate-fade-in">
-                           <h3 className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-4">Weekly Selection Summary (Week {selectedComp.currentWeek})</h3>
+                           <h3 className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-4">Weekly Selection Summary (Week {selectedComp?.currentWeek})</h3>
                            <div className="flex flex-wrap gap-4">
                               {selectionBreakdown.map(item => (
                                 <div key={item.team?.id} className="flex items-center gap-3 bg-black/40 px-4 py-2 rounded-xl border border-white/5 shadow-inner">
@@ -532,7 +532,7 @@ const App: React.FC = () => {
                     <h2 className="text-xl font-black text-white uppercase italic mb-6">MW {selectedMatchweek} Pick Selection</h2>
                     <div className="grid grid-cols-4 gap-3">
                       {PREMIER_LEAGUE_TEAMS.map(team => {
-                        const used = activeCoupon.picks.some(p => p.teamId === team.id && p.week !== selectedMatchweek);
+                        const used = activeCoupon?.picks.some(p => p.teamId === team.id && p.week !== selectedMatchweek);
                         const isSelected = !!currentPickInView && currentPickInView.teamId === team.id;
                         return (
                           <button key={team.id} disabled={used} onClick={() => handlePickRequest(team.id, selectedMatchweek!)} 
