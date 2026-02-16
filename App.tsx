@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { PREMIER_LEAGUE_TEAMS } from './constants';
-import { AppState, Competition, Coupon, Team, Pick, LeagueTableEntry, TeamStatus, TeamForm } from './types';
+import { AppState, Competition, Coupon, LeagueTableEntry, TeamStatus, TeamForm } from './types';
 import { getStandingsViaSearch, getFormViaSearch } from './geminiService';
 import { getPremierLeagueStandings, getUpcomingPremierLeagueMatches } from './footballApiService';
 import TeamFormTab from './TeamFormTab';
@@ -20,7 +20,7 @@ const isMatchLocked = (utcDate: string) => {
 const App: React.FC = () => {
   const [state, setState] = useState<AppState>(() => {
     const savedStr = localStorage.getItem('pl-survivor-v4');
-    let baseState: AppState = {
+    const baseState: AppState = {
       userNickname: null,
       userCoins: 50, 
       competitions: [],
@@ -43,7 +43,7 @@ const App: React.FC = () => {
         return {
           ...baseState,
           ...saved,
-          plData: baseState.plData 
+          plData: saved.plData || baseState.plData 
         };
       } catch (e) {
         return baseState;
@@ -69,7 +69,6 @@ const App: React.FC = () => {
   const [searchFormResult, setSearchFormResult] = useState<{ form: TeamForm[], sources: { title: string, uri: string }[] }>({ form: [], sources: [] });
   const [selectedMatchweek, setSelectedMatchweek] = useState<number | null>(null);
 
-  // RULE 2: safeSelectedComp strictly defined
   const safeSelectedComp: Competition | null = useMemo(
     () => state.competitions.find(c => c.id === state.selectedCompetitionId) || null,
     [state.competitions, state.selectedCompetitionId]
@@ -78,7 +77,6 @@ const App: React.FC = () => {
   const allCouponsInComp = useMemo(() => state.coupons.filter(c => c.competitionId === state.selectedCompetitionId), [state.coupons, state.selectedCompetitionId]);
   const myCouponsInComp = useMemo(() => allCouponsInComp.filter(c => c.ownerNickname === state.userNickname), [allCouponsInComp, state.userNickname]);
 
-  // Breakdown of picks for the current competition week
   const selectionBreakdown = useMemo(() => {
     if (!safeSelectedComp) return [];
     const week = safeSelectedComp.currentWeek;
@@ -148,7 +146,10 @@ const App: React.FC = () => {
           t.name.toLowerCase() === raw.teamName.toLowerCase() || 
           t.aliases?.some(a => a.toLowerCase() === raw.teamName.toLowerCase())
         );
-        const last5 = (raw.last5 || []).slice(0, 5).map((r: string) => r.toUpperCase() === 'W' || r.toUpperCase() === 'D' || r.toUpperCase() === 'L' ? r.toUpperCase() as any : 'D');
+        const last5 = (raw.last5 || []).slice(0, 5).map((r: string) => {
+          const res = r.toUpperCase();
+          return (res === 'W' || res === 'D' || res === 'L') ? res : 'D';
+        });
         const pts = last5.reduce((acc: number, r: string) => acc + (r === 'W' ? 3 : r === 'D' ? 1 : 0), 0);
         return {
           teamName: team?.name || raw.teamName,
@@ -203,7 +204,7 @@ const App: React.FC = () => {
   [state.coupons, activeCouponId]);
   
   const currentPickInView = useMemo(() => {
-    if (!safeActiveCoupon || !selectedMatchweek) return null;
+    if (!safeActiveCoupon || selectedMatchweek === null) return null;
     return safeActiveCoupon.picks.find(p => p.week === selectedMatchweek) || null;
   }, [safeActiveCoupon, selectedMatchweek]);
 
@@ -213,7 +214,6 @@ const App: React.FC = () => {
   }, [state.plData?.table]);
 
   const shareReport = () => {
-    // RULE 3 & 1: Guard check and safeSelectedComp usage
     if (!safeSelectedComp) return;
     const week = safeSelectedComp.currentWeek;
     const survivors = allCouponsInComp.filter(c => c.status === 'ACTIVE');
@@ -230,7 +230,6 @@ const App: React.FC = () => {
 
   const handlePickRequest = (teamId: string, week: number) => {
     const team = PREMIER_LEAGUE_TEAMS.find(t => t.id === teamId);
-    // RULE 1 & 3: safeSelectedComp and safeActiveCoupon usage
     if (!team || !safeActiveCoupon || safeActiveCoupon.status !== 'ACTIVE' || !safeSelectedComp) return;
     
     const match = matches.find(m => m.matchday === week && (m.homeTeam.name === team.name || m.awayTeam.name === team.name || team.aliases?.some(a => m.homeTeam.name === a || m.awayTeam.name === a)));
@@ -248,7 +247,6 @@ const App: React.FC = () => {
   };
 
   const addEntry = () => {
-    // RULE 1 & 3: safeSelectedComp usage
     if (!state.selectedCompetitionId || !safeSelectedComp) return;
     if (myCouponsInComp.length >= MAX_ENTRIES_PER_POOL) return alert(`Max ${MAX_ENTRIES_PER_POOL} entries allowed.`);
     if (state.userCoins < ENTRY_COST) return alert("Insufficient coins!");
@@ -271,7 +269,6 @@ const App: React.FC = () => {
   };
 
   const resolveWeek = () => {
-    // RULE 5: Fixed resolveWeek specifically
     if (!safeSelectedComp || !state.plData) return;
     const currentWeek = safeSelectedComp.currentWeek;
     const outcomes = state.plData.results;
@@ -292,7 +289,6 @@ const App: React.FC = () => {
     setActiveView('DASHBOARD');
   };
 
-  // --- PUBLIC LANDING ---
   if (!state.userNickname) {
     return (
       <div className="min-h-screen bg-[#0d1117] text-white flex flex-col items-center justify-center p-6">
@@ -308,7 +304,6 @@ const App: React.FC = () => {
     );
   }
 
-  // --- POOL LOBBY ---
   if (!state.selectedCompetitionId) {
     return (
       <div className="min-h-screen bg-[#0d1117] text-white py-12 px-6">
@@ -406,7 +401,6 @@ const App: React.FC = () => {
     );
   }
 
-  // RULE 3A: Narrowing guard check
   if (!safeSelectedComp) {
     return (
       <div className="min-h-screen bg-[#0d1117] text-slate-100 flex items-center justify-center">
@@ -418,10 +412,8 @@ const App: React.FC = () => {
     );
   }
 
-  // RULE 3C: Safe fallback for labeling
-  const currentMatchweekLabel = safeSelectedComp?.currentWeek ?? 1;
+  const currentMatchweekLabel = safeSelectedComp.currentWeek;
 
-  // --- MAIN GAME VIEW ---
   return (
     <div className="min-h-screen bg-[#0d1117] text-slate-100 overflow-x-hidden relative">
       <div className="max-w-7xl mx-auto px-4 py-8 pb-32">
@@ -429,7 +421,6 @@ const App: React.FC = () => {
           <div className="flex items-center gap-4">
             <button onClick={() => setState(s => ({ ...s, selectedCompetitionId: null }))} className="p-3 bg-[#0d1117] text-slate-400 rounded-xl hover:text-white transition"><i className="fa-solid fa-arrow-left"></i></button>
             <div>
-              {/* RULE 6: Safe reference in JSX */}
               <h1 className="text-2xl font-black text-white uppercase italic tracking-tighter leading-none">{safeSelectedComp?.name}</h1>
               <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest mt-1">Pool Hub • Week {currentMatchweekLabel}</p>
             </div>
@@ -481,13 +472,13 @@ const App: React.FC = () => {
                       </div>
 
                       <div className="grid grid-cols-1 gap-6">
-                        {selectedMatchweek && groupedMatches[selectedMatchweek] ? (
+                        {selectedMatchweek !== null && groupedMatches[selectedMatchweek] ? (
                           groupedMatches[selectedMatchweek].map((match: any) => {
                             const homeTeam = PREMIER_LEAGUE_TEAMS.find(t => t.name === match.homeTeam.name || t.aliases?.includes(match.homeTeam.name));
                             const awayTeam = PREMIER_LEAGUE_TEAMS.find(t => t.name === match.awayTeam.name || t.aliases?.includes(match.awayTeam.name));
                             return (
                               <div key={match.id} className="bg-black/20 border border-white/5 rounded-3xl p-6 flex justify-between items-center group hover:border-white/20 transition-all shadow-lg">
-                                 <button onClick={() => homeTeam && handlePickRequest(homeTeam.id, selectedMatchweek)} className="flex-1 flex flex-col items-center gap-2 hover:scale-105 transition-all">
+                                 <button onClick={() => homeTeam && selectedMatchweek !== null && handlePickRequest(homeTeam.id, selectedMatchweek)} className="flex-1 flex flex-col items-center gap-2 hover:scale-105 transition-all">
                                     <img src={homeTeam?.logo} className="w-12 h-12 object-contain" alt={homeTeam?.name} />
                                     <span className="text-[11px] font-black text-white uppercase text-center">{match.homeTeam.name}</span>
                                  </button>
@@ -495,7 +486,7 @@ const App: React.FC = () => {
                                     <span className="text-[24px] font-black text-white italic tracking-tighter">{match.score?.fullTime?.home ?? '-'} : {match.score?.fullTime?.away ?? '-'}</span>
                                     <span className="text-[8px] font-bold text-slate-500 uppercase mt-2">{new Date(match.utcDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                                  </div>
-                                 <button onClick={() => awayTeam && handlePickRequest(awayTeam.id, selectedMatchweek)} className="flex-1 flex flex-col items-center gap-2 hover:scale-105 transition-all">
+                                 <button onClick={() => awayTeam && selectedMatchweek !== null && handlePickRequest(awayTeam.id, selectedMatchweek)} className="flex-1 flex flex-col items-center gap-2 hover:scale-105 transition-all">
                                     <img src={awayTeam?.logo} className="w-12 h-12 object-contain" alt={awayTeam?.name} />
                                     <span className="text-[11px] font-black text-white uppercase text-center">{match.awayTeam.name}</span>
                                  </button>
@@ -560,15 +551,19 @@ const App: React.FC = () => {
                   </div>
                 </div>
 
-                {safeActiveCoupon && (
+                {safeActiveCoupon && selectedMatchweek !== null && (
                   <div className="bg-[#161b22]/40 backdrop-blur-xl border border-white/5 rounded-3xl p-8 shadow-2xl animate-fade-in">
                     <h2 className="text-xl font-black text-white uppercase italic mb-6">MW {selectedMatchweek} Pick Selection</h2>
                     <div className="grid grid-cols-4 gap-3">
                       {PREMIER_LEAGUE_TEAMS.map(team => {
-                        const used = safeActiveCoupon?.picks.some(p => p.teamId === team.id && p.week !== selectedMatchweek);
+                        const used = selectedMatchweek !== null && safeActiveCoupon.picks.some(p => p.teamId === team.id && p.week !== selectedMatchweek);
                         const isSelected = !!currentPickInView && currentPickInView.teamId === team.id;
                         return (
-                          <button key={team.id} disabled={used} onClick={() => handlePickRequest(team.id, selectedMatchweek!)} 
+                          <button key={team.id} disabled={!!used} onClick={() => {
+                            if (selectedMatchweek !== null) {
+                              handlePickRequest(team.id, selectedMatchweek);
+                            }
+                          }} 
                             className={`flex flex-col items-center p-3 rounded-xl border-2 transition-all ${isSelected ? 'bg-indigo-600 border-indigo-400 scale-105' : used ? 'opacity-10 bg-black cursor-not-allowed' : 'bg-black/20 border-white/5 hover:border-indigo-500 shadow-md'}`}>
                             <img src={team.logo} className="w-8 h-8 object-contain mb-1" alt={team.shortName} />
                             <span className="text-[7px] font-black uppercase text-center text-slate-400">{team.shortName}</span>
@@ -632,7 +627,12 @@ const App: React.FC = () => {
               <img src={pendingPick.logo} className="w-24 h-24 object-contain mx-auto mb-6 drop-shadow-2xl" alt={pendingPick.teamName} />
               <h2 className="text-3xl font-black text-white uppercase italic mb-10 tracking-tighter">{pendingPick.teamName}</h2>
               <div className="flex flex-col gap-4">
-                <button onClick={() => { setState(prev => ({ ...prev, coupons: prev.coupons.map(c => c.id === activeCouponId ? { ...c, picks: [...c.picks.filter(p => p.week !== pendingPick.week), { week: pendingPick.week, teamId: pendingPick.teamId }] } : c) })); setPendingPick(null); }}
+                <button onClick={() => { 
+                  if (activeCouponId !== null) {
+                    setState(prev => ({ ...prev, coupons: prev.coupons.map(c => c.id === activeCouponId ? { ...c, picks: [...c.picks.filter(p => p.week !== pendingPick.week), { week: pendingPick.week, teamId: pendingPick.teamId }] } : c) })); 
+                  }
+                  setPendingPick(null); 
+                }}
                    className="w-full py-5 bg-indigo-600 text-white font-black rounded-2xl uppercase tracking-widest hover:bg-indigo-500 transition-all shadow-xl shadow-indigo-600/20">Lock In Pick</button>
                 <button onClick={() => setPendingPick(null)} className="w-full py-2 text-slate-500 font-bold uppercase text-[10px] tracking-widest hover:text-white transition-colors">Abort Selection</button>
               </div>
