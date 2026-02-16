@@ -204,7 +204,7 @@ const App: React.FC = () => {
     if (!selectedComp) return;
     const week = selectedComp.currentWeek;
     const survivors = allCouponsInComp.filter(c => c.status === 'ACTIVE');
-    let text = `🏆 *PL SURVIVOR ELITE* 🏆\n*Pool:* ${selectedComp.name}\n*MW ${week} Report*\n--------------------------\n`;
+    let text = `🏆 *PL SURVIVOR ELITE* 🏆\n*Pool:* ${selectedComp?.name}\n*MW ${week} Report*\n--------------------------\n`;
     text += `🛡️ *Survivors:* ${survivors.length}\n`;
     survivors.forEach(c => {
       const pick = c.picks.find(p => p.week === week);
@@ -245,7 +245,7 @@ const App: React.FC = () => {
       ownerNickname: state.userNickname!, 
       status: 'ACTIVE', 
       picks: [],
-      createdAtWeek: selectedComp.currentWeek
+      createdAtWeek: selectedComp?.currentWeek || 1
     };
     setState(prev => ({ 
       ...prev, 
@@ -262,7 +262,7 @@ const App: React.FC = () => {
       ...prev,
       coupons: prev.coupons.map(coupon => {
         if (coupon.competitionId !== prev.selectedCompetitionId || coupon.status !== 'ACTIVE') return coupon;
-        const pick = coupon.picks.find(p => p.week === selectedComp.currentWeek);
+        const pick = coupon.picks.find(p => p.week === selectedComp?.currentWeek);
         const team = pick ? PREMIER_LEAGUE_TEAMS.find(t => t.id === pick.teamId) : null;
         if (!team || outcomes[team.name] !== 'WIN') return { ...coupon, status: 'ELIMINATED' as const };
         return coupon;
@@ -386,6 +386,11 @@ const App: React.FC = () => {
         )}
       </div>
     );
+  }
+
+  // Final narrowing for selectedComp after verifying state.selectedCompetitionId exists
+  if (!selectedComp) {
+    return null;
   }
 
   // --- MAIN GAME VIEW ---
