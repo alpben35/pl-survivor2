@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { PREMIER_LEAGUE_TEAMS } from './constants';
-import { AppState, Competition, Coupon, LeagueTableEntry, TeamStatus, TeamForm } from './types';
+import { AppState, Competition, Coupon, LeagueTableEntry, TeamStatus, TeamForm, Pick } from './types';
 import { getStandingsViaSearch, getFormViaSearch } from './geminiService';
 import { getPremierLeagueStandings, getUpcomingPremierLeagueMatches } from './footballApiService';
 import TeamFormTab from './TeamFormTab';
@@ -69,7 +69,7 @@ const App: React.FC = () => {
   const [searchFormResult, setSearchFormResult] = useState<{ form: TeamForm[], sources: { title: string, uri: string }[] }>({ form: [], sources: [] });
   const [selectedMatchweek, setSelectedMatchweek] = useState<number | null>(null);
 
-  const safeSelectedComp: Competition | null = useMemo(
+  const safeSelectedComp = useMemo(
     () => state.competitions.find(c => c.id === state.selectedCompetitionId) || null,
     [state.competitions, state.selectedCompetitionId]
   );
@@ -83,9 +83,9 @@ const App: React.FC = () => {
     const counts: Record<string, number> = {};
     allCouponsInComp.forEach(c => {
       if (c.status === 'ACTIVE') {
-        const pick = c.picks.find(p => p.week === week);
-        if (pick) {
-          counts[pick.teamId] = (counts[pick.teamId] || 0) + 1;
+        const p = c.picks.find(item => item.week === week);
+        if (p) {
+          counts[p.teamId] = (counts[p.teamId] || 0) + 1;
         }
       }
     });
@@ -149,7 +149,7 @@ const App: React.FC = () => {
         const last5 = (raw.last5 || []).slice(0, 5).map((r: string) => {
           const res = r.toUpperCase();
           return (res === 'W' || res === 'D' || res === 'L') ? res : 'D';
-        });
+        }) as ("W" | "D" | "L")[];
         const pts = last5.reduce((acc: number, r: string) => acc + (r === 'W' ? 3 : r === 'D' ? 1 : 0), 0);
         return {
           teamName: team?.name || raw.teamName,
@@ -199,7 +199,7 @@ const App: React.FC = () => {
     return Object.keys(groupedMatches).map(Number).sort((a, b) => a - b);
   }, [groupedMatches]);
 
-  const safeActiveCoupon: Coupon | null = useMemo(() => 
+  const safeActiveCoupon = useMemo(() => 
     state.coupons.find(c => c.id === activeCouponId) || null, 
   [state.coupons, activeCouponId]);
   
@@ -214,11 +214,10 @@ const App: React.FC = () => {
   }, [state.plData?.table]);
 
   const shareReport = () => {
-    const selectedComp = safeSelectedComp;
-    if (!selectedComp) return;
-    const week = selectedComp.currentWeek;
+    if (!safeSelectedComp) return;
+    const week = safeSelectedComp.currentWeek;
     const survivors = allCouponsInComp.filter(c => c.status === 'ACTIVE');
-    let text = `🏆 *PL SURVIVOR ELITE* 🏆\n*Pool:* ${selectedComp.name}\n*MW ${week} Report*\n--------------------------\n`;
+    let text = `🏆 *PL SURVIVOR ELITE* 🏆\n*Pool:* ${safeSelectedComp.name}\n*MW ${week} Report*\n--------------------------\n`;
     text += `🛡️ *Survivors:* ${survivors.length}\n`;
     survivors.forEach(c => {
       const pick = c.picks.find(p => p.week === week);
@@ -231,8 +230,7 @@ const App: React.FC = () => {
 
   const handlePickRequest = (teamId: string, week: number) => {
     const team = PREMIER_LEAGUE_TEAMS.find(t => t.id === teamId);
-    const selectedComp = safeSelectedComp;
-    if (!team || !safeActiveCoupon || safeActiveCoupon.status !== 'ACTIVE' || !selectedComp) return;
+    if (!team || !safeActiveCoupon || safeActiveCoupon.status !== 'ACTIVE' || !safeSelectedComp) return;
     
     const match = matches.find(m => m.matchday === week && (m.homeTeam.name === team.name || m.awayTeam.name === team.name || team.aliases?.some(a => m.homeTeam.name === a || m.awayTeam.name === a)));
     if (match && isMatchLocked(match.utcDate)) return alert("Match is locked!");
@@ -249,8 +247,7 @@ const App: React.FC = () => {
   };
 
   const addEntry = () => {
-    const selectedComp = safeSelectedComp;
-    if (!state.selectedCompetitionId || !selectedComp) return;
+    if (!state.selectedCompetitionId || !safeSelectedComp) return;
     if (myCouponsInComp.length >= MAX_ENTRIES_PER_POOL) return alert(`Max ${MAX_ENTRIES_PER_POOL} entries allowed.`);
     if (state.userCoins < ENTRY_COST) return alert("Insufficient coins!");
     
@@ -261,7 +258,7 @@ const App: React.FC = () => {
       ownerNickname: state.userNickname || "Manager", 
       status: 'ACTIVE', 
       picks: [],
-      createdAtWeek: selectedComp.currentWeek
+      createdAtWeek: safeSelectedComp.currentWeek
     };
     setState(prev => ({ 
       ...prev, 
@@ -272,18 +269,17 @@ const App: React.FC = () => {
   };
 
   const resolveWeek = () => {
-    const selectedComp = safeSelectedComp;
-    if (!selectedComp || !state.plData) return;
-    const currentWeek = selectedComp.currentWeek;
-    const outcomes = state.plData.results;
+    if (!safeSelectedComp || !state.plData) return;
+    const currentWeek = safeSelectedComp.currentWeek;
+    const resultsDict = state.plData.results;
     
     setState(prev => ({
       ...prev,
       coupons: prev.coupons.map(coupon => {
         if (coupon.competitionId !== prev.selectedCompetitionId || coupon.status !== 'ACTIVE') return coupon;
-        const pick = coupon.picks.find(p => p.week === currentWeek);
-        const team = pick ? PREMIER_LEAGUE_TEAMS.find(t => t.id === pick.teamId) : null;
-        if (!team || outcomes[team.name] !== 'WIN') return { ...coupon, status: 'ELIMINATED' as const };
+        const p = coupon.picks.find(item => item.week === currentWeek);
+        const team = p ? PREMIER_LEAGUE_TEAMS.find(t => t.id === p.teamId) : null;
+        if (!team || resultsDict[team.name] !== 'WIN') return { ...coupon, status: 'ELIMINATED' as const };
         return coupon;
       }),
       competitions: prev.competitions.map(comp => comp.id === prev.selectedCompetitionId ? { ...comp, currentWeek: comp.currentWeek + 1 } : comp),
@@ -416,8 +412,8 @@ const App: React.FC = () => {
     );
   }
 
-  // Strictly Narrowed Competition Object - Permanent Architectural Fix for TS18047
-  const selectedComp: Competition = safeSelectedComp!;
+  // Strictly Narrowed Competition Object
+  const selectedComp: Competition = safeSelectedComp;
 
   return (
     <div className="min-h-screen bg-[#0d1117] text-slate-100 overflow-x-hidden relative">
@@ -479,16 +475,16 @@ const App: React.FC = () => {
                       <div className="grid grid-cols-1 gap-6">
                         {selectedMatchweek !== null && groupedMatches[selectedMatchweek] ? (
                           groupedMatches[selectedMatchweek].map((match: any) => {
-                            const homeTeam = PREMIER_LEAGUE_TEAMS.find(t => t.name === match.homeTeam.name || t.aliases?.includes(match.homeTeam.name));
-                            const awayTeam = PREMIER_LEAGUE_TEAMS.find(t => t.name === match.awayTeam.name || t.aliases?.includes(match.awayTeam.name));
+                            const hTeam = PREMIER_LEAGUE_TEAMS.find(t => t.name === match.homeTeam.name || t.aliases?.includes(match.homeTeam.name));
+                            const aTeam = PREMIER_LEAGUE_TEAMS.find(t => t.name === match.awayTeam.name || t.aliases?.includes(match.awayTeam.name));
                             return (
                               <div key={match.id} className="bg-black/20 border border-white/5 rounded-3xl p-6 flex justify-between items-center group hover:border-white/20 transition-all shadow-lg">
                                  <button onClick={() => {
-                                   if (homeTeam && selectedMatchweek !== null) {
-                                     handlePickRequest(homeTeam.id, selectedMatchweek);
+                                   if (hTeam && selectedMatchweek !== null) {
+                                     handlePickRequest(hTeam.id, selectedMatchweek);
                                    }
                                  }} className="flex-1 flex flex-col items-center gap-2 hover:scale-105 transition-all">
-                                    <img src={homeTeam?.logo} className="w-12 h-12 object-contain" alt={homeTeam?.name} />
+                                    <img src={hTeam?.logo} className="w-12 h-12 object-contain" alt={hTeam?.name} />
                                     <span className="text-[11px] font-black text-white uppercase text-center">{match.homeTeam.name}</span>
                                  </button>
                                  <div className="flex flex-col items-center px-10">
@@ -496,11 +492,11 @@ const App: React.FC = () => {
                                     <span className="text-[8px] font-bold text-slate-500 uppercase mt-2">{new Date(match.utcDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                                  </div>
                                  <button onClick={() => {
-                                   if (awayTeam && selectedMatchweek !== null) {
-                                     handlePickRequest(awayTeam.id, selectedMatchweek);
+                                   if (aTeam && selectedMatchweek !== null) {
+                                     handlePickRequest(aTeam.id, selectedMatchweek);
                                    }
                                  }} className="flex-1 flex flex-col items-center gap-2 hover:scale-105 transition-all">
-                                    <img src={awayTeam?.logo} className="w-12 h-12 object-contain" alt={awayTeam?.name} />
+                                    <img src={aTeam?.logo} className="w-12 h-12 object-contain" alt={aTeam?.name} />
                                     <span className="text-[11px] font-black text-white uppercase text-center">{match.awayTeam.name}</span>
                                  </button>
                               </div>
@@ -524,12 +520,12 @@ const App: React.FC = () => {
                           <span className="col-span-2 text-right">Pts</span>
                        </div>
                        {sortedTable.map((row, idx) => {
-                          const teamObj = PREMIER_LEAGUE_TEAMS.find(t => t.name.toLowerCase() === row.team.toLowerCase() || t.aliases?.some(a => a.toLowerCase() === row.team.toLowerCase()));
+                          const tObj = PREMIER_LEAGUE_TEAMS.find(t => t.name.toLowerCase() === row.team.toLowerCase() || t.aliases?.some(a => a.toLowerCase() === row.team.toLowerCase()));
                           return (
                             <div key={idx} className="grid grid-cols-12 items-center bg-black/20 p-4 rounded-2xl border border-white/5 text-[11px] font-black hover:border-indigo-500/50 transition-all shadow-md">
                                <span className="col-span-1 text-slate-500">{row.position}</span>
                                <div className="col-span-5 flex items-center gap-3">
-                                  <img src={teamObj?.logo} className="w-5 h-5 object-contain" alt={row.team} />
+                                  <img src={tObj?.logo} className="w-5 h-5 object-contain" alt={row.team} />
                                   <span className="truncate text-white uppercase">{row.team}</span>
                                </div>
                                <span className="col-span-2 text-center text-slate-500">{row.played}</span>
@@ -611,11 +607,11 @@ const App: React.FC = () => {
                             <div className="text-[10px] text-slate-500 font-bold uppercase mt-1 tracking-widest">{c.ownerNickname}</div>
                          </td>
                          {standingsWeeks.map(mw => {
-                            const pick = c.picks.find(p => p.week === mw);
-                            const team = PREMIER_LEAGUE_TEAMS.find(t => t.id === pick?.teamId);
+                            const p = c.picks.find(item => item.week === mw);
+                            const t = p ? PREMIER_LEAGUE_TEAMS.find(team => team.id === p.teamId) : null;
                             return (
                                <td key={mw} className="text-center px-4">
-                                  {team ? <img src={team.logo} className="w-8 h-8 object-contain mx-auto transition-transform hover:scale-125" title={team.name} alt={team.name} /> : <span className="text-slate-800 text-xs">—</span>}
+                                  {t ? <img src={t.logo} className="w-8 h-8 object-contain mx-auto transition-transform hover:scale-125" title={t.name} alt={t.name} /> : <span className="text-slate-800 text-xs">—</span>}
                                </td>
                             );
                          })}
@@ -642,8 +638,16 @@ const App: React.FC = () => {
               <h2 className="text-3xl font-black text-white uppercase italic mb-10 tracking-tighter">{pendingPick.teamName}</h2>
               <div className="flex flex-col gap-4">
                 <button onClick={() => { 
-                  if (activeCouponId !== null) {
-                    setState(prev => ({ ...prev, coupons: prev.coupons.map(c => c.id === activeCouponId ? { ...c, picks: [...c.picks.filter(p => p.week !== pendingPick.week), { week: pendingPick.week, teamId: pendingPick.teamId }] } : c) })); 
+                  const currentPending = pendingPick;
+                  if (activeCouponId !== null && currentPending) {
+                    setState(prev => ({ 
+                      ...prev, 
+                      coupons: prev.coupons.map(c => 
+                        c.id === activeCouponId 
+                          ? { ...c, picks: [...c.picks.filter(p => p.week !== currentPending.week), { week: currentPending.week, teamId: currentPending.teamId }] } 
+                          : c
+                      ) 
+                    })); 
                   }
                   setPendingPick(null); 
                 }}
@@ -674,7 +678,8 @@ const App: React.FC = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-10 max-h-[400px] overflow-y-auto no-scrollbar pr-2">
                 {PREMIER_LEAGUE_TEAMS.sort((a,b) => a.name.localeCompare(b.name)).map(team => {
                   const plData = state.plData;
-                  const currentStatus = plData?.results?.[team.name] || 'PENDING';
+                  const resultsDict = plData ? plData.results : {};
+                  const currentStatus = resultsDict[team.name] || 'PENDING';
                   return (
                     <div key={team.id} className="bg-black/40 p-4 rounded-2xl border border-white/5 flex items-center justify-between shadow-inner">
                       <span className="text-[11px] font-black text-white uppercase truncate max-w-[120px] tracking-tight">{team.name}</span>
